@@ -5,6 +5,22 @@ const morgan = require('morgan');
 const cors = require('cors');
 require('dotenv').config();
 
+const getTravelTime = (address1, address2) => {
+    // use google maps api
+    return Math.random();
+};
+
+const calculateRoute = addresses => {
+    // we want to optimize for least time on the road after the first stop has been reached
+    // we return to our starting point
+
+    for (let i=0; i<addresses.length; i++) {
+        for (let j=0; j<addresses.length; j++) {
+            let travelTime = getTravelTime(addresses[i], addresses[j]);
+        }
+    }
+};
+
 
 // app
 const app = express();

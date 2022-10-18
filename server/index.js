@@ -18,7 +18,7 @@ const getTravelTime = async (online, address1, address2) => {
 
 const getRouteGraph = async (online, addresses) => {
     let routeMaps = {};
-    for (let i=0; i< addresses.length; i++) {
+    for (let i=0; i<addresses.length; i++) {
         routeMaps[addresses[i]] = {};
     }
 
@@ -38,6 +38,26 @@ const getRouteGraph = async (online, addresses) => {
     return routeMaps;
 };
 
+const removeItem = (arr, value) => {
+    let index = arr.indexOf(value);
+    if (index > -1) {
+      arr.splice(index, 1);
+    }
+    return index;
+};
+
+const insertItem = (arr, value, index) => {
+    let newArr = [];
+    newArr = arr.slice(0, index);
+    newArr.push(value);
+    for (let i=index; i<arr.length; i++) {
+        newArr.push(arr[i]);
+    }
+    for(let i=0; i<newArr.length; i++) {
+        arr[i] = newArr[i];
+    }
+};
+
 const calculateOptimalRoute = (addresses, routeGraph) => {
     // we want to optimize for least time on the road after the first stop has been reached
     // we return to our starting point
@@ -46,12 +66,12 @@ const calculateOptimalRoute = (addresses, routeGraph) => {
     // and pruning based off of a minimum distance
 
     // create backtrack function first
-    const backtrack = (currentTravelDuration, currentRoute, unvisitedLocations) => {
-        // prune or reached depth?
+    const backtrack = (currentTravelDuration, currentRoute, unvisitedLocations, locationCount) => {
+        // do we prune? have we reached max depth?
         if (currentTravelDuration > minTravelDuration) return;
-        if (currentRoute.length == addresses.length) {
+        if (currentRoute.length == locationCount) {
             minTravelDuration = currentTravelDuration;
-            optimalRoute = currentroute;
+            optimalRoute = currentRoute;
             return;
         }
 
@@ -59,12 +79,17 @@ const calculateOptimalRoute = (addresses, routeGraph) => {
         let lastLocation = currentRoute[currentRoute.length-1];
         for (let i = 0; i<unvisitedLocations.length; i++) {
             let nextLocation = unvisitedLocations[i];
+            if (nextLocation == originLocation && unvisitedLocations.length > 1) continue;
 
             currentRoute.push(nextLocation);
             currentTravelDuration += routeGraph[lastLocation][nextLocation];
-            backtrack(currentTravelDuration, [...currentRoute], [...unvisitedLocations]);
+            let index = removeItem(unvisitedLocations, nextLocation);
+
+            backtrack(currentTravelDuration, [...currentRoute], [...unvisitedLocations], locationCount);
+
             currentRoute.pop();
             currentTravelDuration -= routeGraph[lastLocation][nextLocation];
+            insertItem(unvisitedLocations, nextLocation, index);
         }
     };
 
@@ -72,55 +97,76 @@ const calculateOptimalRoute = (addresses, routeGraph) => {
     let minTravelDuration = Number.MAX_VALUE;
     let optimalRoute = [];
 
+    let originLocation = addresses.shift();
+    addresses.push(originLocation);
+
     // search every possibility
+    let locationCount = addresses.length;
+    for (let i=0; i<locationCount; i++) {
+        let value = addresses[i];
+        if (value == originLocation) continue;
+        let index = removeItem(addresses, addresses[i]);
+        backtrack(0, [value], [...addresses], locationCount);
+        insertItem(addresses, value, index);
+    }
 
-
-    return [];
+    optimalRoute.unshift(originLocation);
+    return {
+        'time': minTravelDuration,
+        'route': optimalRoute
+    };
 };
 
-let myAddresses = ['Miami,Florida', 'Springfield,Illinois', 'Atlanta,Georgia', 'Houston,Texas', 'Sacramento,California'];
-let online = false;
-
-let routeGraph = await getRouteGraph(online, myAddresses);
-console.log(routeGraph);
-let optimalRoute = await calculateOptimalRoute(myAddresses, routeGraph);
-console.log(optimalRoute);
-
-
 // app
-// const app = express();
+const app = express();
 
 
-// // db
-// mongoose.connect(process.env.MONGO_URI, {
-//     useNewUrlParser: true,
-//     useUnifiedTopology: true,
-// }).then(() => console.log('DB CONNECTED')).catch(err => console.log('DB CONNECTION ERROR', err));
+// db
+mongoose.connect(process.env.MONGO_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+}).then(() => console.log('DB CONNECTED')).catch(err => console.log('DB CONNECTION ERROR', err));
     
 
-// // middleware
-// app.use(morgan('dev'));
-// app.use(cors({origin: true, credentials: true }));
+// middleware
+app.use(morgan('dev'));
+app.use(cors({origin: true, credentials: true }));
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
 
 
-// // routes
-// const router = express.Router();
+// routes
+const router = express.Router();
 
-// router.get('/test', async (req, res) => {
-//     res.status(200).json({
-//         message: 'Test  API is working!',
-//     });
-// });
+router.get('/test', async (req, res) => {
+    res.status(200).json({
+        message: 'Test  API is working!',
+    });
+});
 
-// //router.get('/route', async)
+router.post('/route', async (req, res) => {
+    let addresses = req.body.addresses;
+    let online = false;
 
-// // use the routes
-// app.use('/', router);
+    if (addresses.constructor.name != 'Array') {
+        res.send('Addresses not an array', 404);
+    } else {
+        let routeGraph = await getRouteGraph(online, addresses);
+        let optimalRouteObject = await calculateOptimalRoute(addresses, routeGraph);
+        
+        res.status(200).json(optimalRouteObject);
+    }
+});
 
 
-// // port
-// const port = process.env.PORT || 8080;
+// use the routes
+app.use('/', router);
 
 
-// // listener
-// const server = app.listen(port, () => console.log(`Server is running on port: ${port}`));
+// port
+const port = process.env.PORT || 8080;
+
+
+// listener
+const server = app.listen(port, () => console.log(`Server is running on port: ${port}`));
